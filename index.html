@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบคำนวณต้นทุน & สต็อกเรียลไทม์</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Alpine.js -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Google Font (Prompt) -->
+    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Prompt', sans-serif; }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 min-h-screen" x-data="app()" x-init="init()">
+
+    <!-- Header -->
+    <header class="bg-indigo-600 text-white shadow-md">
+        <div class="max-w-7xl mx-auto px-4 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
+            <div>
+                <h1 class="text-2xl font-bold flex items-center gap-2">
+                    📊 ระบบจัดการร้านค้า & ต้นทุน
+                </h1>
+                <p class="text-indigo-200 text-sm">คำนวณสต็อก รายรับ-รายจ่าย และกำไรขาดทุนแบบเรียลไทม์</p>
+            </div>
+            <div class="flex items-center gap-2">
+                <button @click="exportData()" class="bg-indigo-500 hover:bg-indigo-700 text-white text-sm px-3 py-2 rounded-lg shadow transition">💾 สำรองข้อมูล</button>
+                <label class="bg-indigo-500 hover:bg-indigo-700 text-white text-sm px-3 py-2 rounded-lg shadow cursor-pointer transition">
+                    📂 กู้คืนข้อมูล <input type="file" @change="importData($event)" class="hidden" accept=".json">
+                </label>
+            </div>
+        </div>
+    </header>
+
+    <!-- Navigation Tabs -->
+    <nav class="bg-white shadow-sm border-b">
+        <div class="max-w-7xl mx-auto px-4 flex space-x-2 md:space-x-8 overflow-x-auto">
+            <button @click="activeTab = 'dashboard'" :class="activeTab === 'dashboard' ? 'border-indigo-600 text-indigo-600 font-semibold' : 'border-transparent text-gray-500 hover:text-gray-700'" class="py-3 px-3 border-b-2 text-sm whitespace-nowrap transition">📈 ภาพรวม (Dashboard)</button>
+            <button @click="activeTab = 'stock'" :class="activeTab === 'stock' ? 'border-indigo-600 text-indigo-600 font-semibold' : 'border-transparent text-gray-500 hover:text-gray-700'" class="py-3 px-3 border-b-2 text-sm whitespace-nowrap transition">📦 จัดการสต็อก & วัตถุดิบ</button>
+            <button @click="activeTab = 'income_expense'" :class="activeTab === 'income_expense' ? 'border-indigo-600 text-indigo-600 font-semibold' : 'border-transparent text-gray-500 hover:text-gray-700'" class="py-3 px-3 border-b-2 text-sm whitespace-nowrap transition">💰 บันทึกรายรับ-รายจ่าย</button>
+            <button @click="activeTab = 'settings'" :class="activeTab === 'settings' ? 'border-indigo-600 text-indigo-600 font-semibold' : 'border-transparent text-gray-500 hover:text-gray-700'" class="py-3 px-3 border-b-2 text-sm whitespace-nowrap transition">⚙️ ตั้งค่าหมวดหมู่</button>
+        </div>
+    </nav>
+
+    <!-- Main Container -->
+    <main class="max-w-7xl mx-auto px-4 py-6">
+
+        <!-- TAB 1: DASHBOARD -->
+        <div x-show="activeTab === 'dashboard'" class="space-y-6">
+            <!-- Filter Date Range -->
+            <div class="bg-white p-4 rounded-xl shadow-sm flex flex-wrap gap-4 items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <label class="text-sm font-medium text-gray-600">เลือกดูข้อมูลประจำวันที่:</label>
+                    <input type="date" x-model="filterDate" class="border rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-indigo-500">
+                </div>
+                <div class="text-sm text-gray-500">
+                    สรุปผลของเดือน: <span class="font-semibold text-indigo-600" x-text="currentMonthName()"></span>
+                </div>
+            </div>
+
+            <!-- Summary Cards -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div class="bg-white p-5 rounded-xl shadow-sm border-l-4 border-green-500">
+                    <p class="text-xs text-gray-500 uppercase font-semibold">ยอดขายวันนี้</p>
+                    <h3 class="text-2xl font-bold text-green-600 mt-1" x-text="formatNumber(getDailyIncome(filterDate)) + ' ฿'"></h3>
+                    <p class="text-xs text-gray-400 mt-1">รายเดือน: <span x-text="formatNumber(getMonthlyIncome()) + ' ฿'"></span></p>
+                </div>
+                <div class="bg-white p-5 rounded-xl shadow-sm border-l-4 border-red-500">
+                    <p class="text-xs text-gray-500 uppercase font-semibold">รายจ่าย/ต้นทุนวันนี้</p>
+                    <h3 class="text-2xl font-bold text-red-600 mt-1" x-text="formatNumber(getDailyExpense(filterDate)) + ' ฿'"></h3>
+                    <p class="text-xs text-gray-400 mt-1">รายเดือน: <span x-text="formatNumber(getMonthlyExpense()) + ' ฿'"></span></p>
+                </div>
+                <div class="bg-white p-5 rounded-xl shadow-sm border-l-4 border-blue-500">
+                    <p class="text-xs text-gray-500 uppercase font-semibold">กำไรสุทธิวันนี้</p>
+                    <h3 class="text-2xl font-bold mt-1" :class="getDailyProfit(filterDate) >= 0 ? 'text-blue-600' : 'text-orange-600'" x-text="formatNumber(getDailyProfit(filterDate)) + ' ฿'"></h3>
+                    <p class="text-xs text-gray-400 mt-1">รายเดือน: <span x-text="formatNumber(getMonthlyProfit()) + ' ฿'"></span></p>
+                </div>
+                <div class="bg-white p-5 rounded-xl shadow-sm border-l-4 border-purple-500">
+                    <p class="text-xs text-gray-500 uppercase font-semibold">วัตถุดิบใกล้หมดสต็อก</p>
+                    <h3 class="text-2xl font-bold text-purple-600 mt-1" x-text="getLowStockCount() + ' รายการ'"></h3>
+                    <p class="text-xs text-gray-400 mt-1">ต้องรีบซื้อเพิ่ม</p>
+                </div>
+            </div>
+
+            <!-- Charts & Quick Alerts -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- Low Stock Alert Table -->
+                <div class="bg-white p-5 rounded-xl shadow-sm lg:col-span-1">
+                    <h3 class="font-bold text-gray-700 mb-3 flex items-center gap-2">🚨 รายการที่ต้องซื้อเพิ่มด่วน</h3>
+                    <div class="overflow-y-auto max-h-72">
+                        <table class="w-full text-sm text-left">
+                            <thead class="bg-gray-100 text-gray-600">
+                                <tr>
+                                    <th class="p-2">วัตถุดิบ</th>
+                                    <th class="p-2 text-right">คงเหลือ</th>
+                                    <th class="p-2 text-right">ต้องซื้อเพิ่ม</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <template x-for="item in getLowStockItems()" :key="item.id">
+                                    <tr class="border-b">
+                                        <td class="p-2 font-medium" x-text="item.name"></td>
+                                        <td class="p-2 text-right text-red-600 font-semibold" x-text="item.stock + ' ' + item.unit"></td>
+                                        <td class="p-2 text-right text-indigo-600 font-bold" x-text="Math.max(0, item.minStock - item.stock) + ' ' + item.unit"></td>
+                                    </tr>
+                                </template>
+                                <template x-if="getLowStockItems().length === 0">
+                                    <tr>
+                                        <td colspan="3" class="text-center py-4 text-gray-400">สต็อกปกติทุกรายการครับเยี่ยมมาก! 🎉</td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Expense Breakdown by Category -->
+                <div class="bg-white p-5 rounded-xl shadow-sm lg:col-span-2">
+                    <h3 class="font-bold text-gray-700 mb-3">🏷️ สรุปรายจ่ายรายเดือนแยกตามหมวดหมู่</h3>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <template x-for="cat in categories" :key="cat">
+                            <div class="bg-gray-50 p-3 rounded-lg border flex justify-between items-center">
+                                <span class="text-sm font-medium text-gray-600" x-text="cat"></span>
+                                <span class="font-bold text-red-600" x-text="formatNumber(getMonthlyExpenseByCategory(cat)) + ' ฿'"></span>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 2: STOCK MANAGEMENT -->
+        <div x-show="activeTab === 'stock'" class="space-y-6">
+            <div class="bg-white p-6 rounded-xl shadow-sm">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-lg font-bold text-gray-700">📦 จัดการวัตถุดิบและสต็อกเรียลไทม์</h2>
+                    <button @click="openStockModal()" class="bg-indigo-600 hover:bg-indigo-700 text-white text-sm px-4 py-2 rounded-lg shadow transition">+ เพิ่มวัตถุดิบใหม่</button>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm text-left">
+                        <thead class="bg-gray-100 text-gray-600">
+                            <tr>
+                                <th class="p-3">ชื่อวัตถุดิบ</th>
+                                <th class="p-3 text-right">สต็อกคงเหลือ</th>
+                                <th class="p-3 text-right">ซื้อเพิ่มวันนี้</th>
+                                <th class="p-3 text-right">ใช้ไปวันนี้</th>
+                                <th class="p-3 text-right">ขั้นต่ำที่ควรมี</th>
+                                <th class="p-3 text-center">จัดการ</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <template x-for="item in stocks" :key="item.id">
+                                <tr class="border-b hover:bg-gray-50">
+                                    <td class="p-3 font-medium" x-text="item.name"></td>
+                                    <td class="p-3 text-right font-bold" :class="item.stock <= item.minStock ? 'text-red-600' : 'text-green-600'" x-text="item.stock + ' ' + item.unit"></td>
+                                    <td class="p-3 text-right">
+                                        <input type="number" min="0" x-model.number="item.boughtToday" @input="saveData()" class="w-20 border rounded px-2 py-1 text-right text-sm">
+                                    </td>
+                                    <td class="p-3 text-right">
+                                        <input type="number" min="0" x-model.number="item.usedToday" @input="saveData()" class="w-20 border rounded px-2 py-1 text-right text-sm">
+                                    </td>
+                                    <td class="p-3 text-right text-gray-500" x-text="item.minStock + ' ' + item.unit"></td>
+                                    <td class="p-3 text-center space-x-2">
+                                        <button @click="editStock(item)" class="text-blue-600 hover:underline text-xs">แก้ไข</button>
+                                        <button @click="deleteStock(item.id)" class="text-red-600 hover:underline text-xs">ลบ</button>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 3: INCOME & EXPENSE -->
+        <div x-show="activeTab === 'income_expense'" class="space-y-6">
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- Form Add Transaction -->
+                <div class="bg-white p-6 rounded-xl shadow-sm lg:col-span-1 h-fit">
+                    <h2 class="text-lg font-bold text-gray-700 mb-4">✍️ บันทึกรายรับ - รายจ่าย</h2>
+                    <form @submit.prevent="addTransaction" class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-600 mb-1">วันที่</label>
+                            <input type="date" x-model="form.date" required class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-600 mb-1">ประเภทรายการ</label>
+                            <select x-model="form.type" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500">
+                                <option value="income">🟢 รายรับ (ยอดขาย)</option>
+                                <option value="expense">🔴 รายจ่าย / ต้นทุน</option>
+                            </select>
+                        </div>
+                        <div x-show="form.type === 'expense'">
+                            <label class="block text-sm font-medium text-gray-600 mb-1">หมวดหมู่รายจ่าย</label>
+                            <select x-model="form.category" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500">
+                                <template x-for="cat in categories" :key="cat">
+                                    <option :value="cat" x-text="cat"></option>
+                                </template>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-600 mb-1">รายละเอียด</label>
+                            <input type="text" x-model="form.name" required placeholder="เช่น ขายหน้าร้าน, ซื้อแก๊สปตท." class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-600 mb-1">จำนวนเงิน (บาท)</label>
+                            <input type="number" step="any" min="0" x-model.number="form.amount" required placeholder="0.00" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500">
+                        </div>
+                        <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 rounded-lg shadow transition">บันทึกรายการ</button>
+                    </form>
+                </div>
+
+                <!-- Transaction History Table -->
+                <div class="bg-white p-6 rounded-xl shadow-sm lg:col-span-2">
+                    <h2 class="text-lg font-bold text-gray-700 mb-4">📋 ประวัติรายการทั้งหมด</h2>
+                    <div class="overflow-y-auto max-h-[500px]">
+                        <table class="w-full text-sm text-left">
+                            <thead class="bg-gray-100 text-gray-600 sticky top-0">
+                                <tr>
+                                    <th class="p-3">วันที่</th>
+                                    <th class="p-3">ประเภท</th>
+                                    <th class="p-3">หมวดหมู่/รายละเอียด</th>
+                                    <th class="p-3 text-right">จำนวนเงิน</th>
+                                    <th class="p-3 text-center">ลบ</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <template x-for="tx in transactions" :key="tx.id">
+                                    <tr class="border-b hover:bg-gray-50">
+                                        <td class="p-3 text-gray-600" x-text="tx.date"></td>
+                                        <td class="p-3">
+                                            <span class="px-2 py-1 rounded text-xs font-semibold" :class="tx.type === 'income' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'" x-text="tx.type === 'income' ? 'รายรับ' : 'รายจ่าย'"></span>
+                                        </td>
+                                        <td class="p-3">
+                                            <div class="font-medium" x-text="tx.name"></div>
+                                            <div class="text-xs text-gray-400" x-text="tx.type === 'expense' ? tx.category : 'ยอดขายประจำวัน'"></div>
+                                        </td>
+                                        <td class="p-3 text-right font-bold" :class="tx.type === 'income' ? 'text-green-600' : 'text-red-600'" x-text="(tx.type === 'income' ? '+' : '-') + formatNumber(tx.amount) + ' ฿'"></td>
+                                        <td class="p-3 text-center">
+                                            <button @click="deleteTransaction(tx.id)" class="text-red-600 hover:underline text-xs">ลบ</button>
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 4: SETTINGS (CATEGORIES) -->
+        <div x-show="activeTab === 'settings'" class="space-y-6">
+            <div class="bg-white p-6 rounded-xl shadow-sm max-w-xl mx-auto">
+                <h2 class="text-lg font-bold text-gray-700 mb-4">⚙️ จัดการหมวดหมู่รายจ่าย</h2>
+                <div class="flex gap-2 mb-4">
+                    <input type="text" x-model="newCategoryName" placeholder="ชื่อหมวดหมู่ใหม่ เช่น ค่าเน็ต, ค่าขนส่ง" class="flex-1 border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500">
+                    <button @click="addCategory" class="bg-indigo-600 hover:bg-indigo-700 text-white text-sm px-4 py-2 rounded-lg shadow transition">เพิ่มหมวดหมู่</button>
+                </div>
+                <ul class="divide-y border rounded-lg overflow-hidden">
+                    <template x-for="(cat, index) in categories" :key="cat">
+                        <li class="p-3 flex justify-between items-center bg-white hover:bg-gray-50">
+                            <span class="text-sm font-medium text-gray-700" x-text="cat"></span>
+                            <button @click="deleteCategory(index)" class="text-red-600 hover:underline text-xs" x-show="categories.length > 1">ลบ</button>
+                        </li>
+                    </template>
+                </ul>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Modal Stock Form -->
+    <div x-show="showStockModal" class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-xl p-6 w-full max-w-md shadow-xl">
+            <h3 class="text-lg font-bold text-gray-700 mb-4" x-text="stockForm.id ? 'แก้ไขวัตถุดิบ' : 'เพิ่มวัตถุดิบใหม่'"></h3>
+            <form @submit.prevent="saveStockItem" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-600 mb-1">ชื่อวัตถุดิบ</label>
+                    <input type="text" x-model="stockForm.name" required class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500">
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 mb-1">สต็อกปัจจุบัน</label>
+                        <input type="number" min="0" step="any" x-model.number="stockForm.stock" required class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 mb-1">หน่วย (เช่น กก., แพ็ค)</label>
+                        <input type="text" x-model="stockForm.unit" required class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-600 mb-1">สต็อกขั้นต่ำ (เตือนเมื่อต่ำกว่านี้)</label>
+                    <input type="number" min="0" step="any" x-model.number="stockForm.minStock" required class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500">
+                </div>
+                <div class="flex justify-end gap-2 mt-6">
+                    <button type="button" @click="showStockModal = false" class="bg-gray-200 text-gray-700 text-sm px-4 py-2 rounded-lg hover:bg-gray-300 transition">ยกเลิก</button>
+                    <button type="submit" class="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700 transition">บันทึก</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- JavaScript Logic -->
+    <script>
+        function app() {
+            return {
+                activeTab: 'dashboard',
+                filterDate: new Date().toISOString().split('T')[0],
+                categories: ['ค่าน้ำ', 'ค่าไฟ', 'ค่าแก๊ส', 'ค่าพนักงาน', 'ค่าวัตถุดิบ', 'เบ็ดเตล็ด'],
+                newCategoryName: '',
+                
+                stocks: [
+                    { id: 1, name: 'เนื้อไก่', stock: 5, unit: 'กก.', minStock: 2, boughtToday: 0, usedToday: 0 },
+                    { id: 2, name: 'ข้าวสวย', stock: 10, unit: 'กก.', minStock: 3, boughtToday: 0, usedToday: 0 },
+                    { id: 3, name: 'แก๊สปตท.', stock: 1, unit: 'ถัง', minStock: 1, boughtToday: 0, usedToday: 0 }
+                ],
+                
+                transactions: [
+                    { id: 1, date: new Date().toISOString().split('T')[0], type: 'income', category: 'ยอดขาย', name: 'ยอดขายหน้าร้านประจำวัน', amount: 3500 },
+                    { id: 2, date: new Date().toISOString().split('T')[0], type: 'expense', category: 'ค่าวัตถุดิบ', name: 'ซื้อเนื้อไก่เพิ่ม', amount: 600 },
+                    { id: 3, date: new Date().toISOString().split('T')[0], type: 'expense', category: 'ค่าไฟ', name: 'ค่าไฟฟ้าหอพัก/ร้าน', amount: 1500 }
+                ],
+
+                form: {
+                    date: new Date().toISOString().split('T')[0],
+                    type: 'income',
+                    category: 'ค่าวัตถุดิบ',
+                    name: '',
+                    amount: ''
+                },
+
+                showStockModal: false,
+                stockForm: { id: null, name: '', stock: 0, unit: '', minStock: 0, boughtToday: 0, usedToday: 0 },
+
+                init() {
+                    const savedData = localStorage.getItem('shop_cost_stock_data');
+                    if (savedData) {
+                        const parsed = JSON.parse(savedData);
+                        this.stocks = parsed.stocks || this.stocks;
+                        this.transactions = parsed.transactions || this.transactions;
+                        this.categories = parsed.categories || this.categories;
+                    }
+                },
+
+                saveData() {
+                    // คำนวณสต็อกเรียลไทม์ (Stock = Stock + Bought - Used)
+                    this.stocks.forEach(item => {
+                        item.boughtToday = Number(item.boughtToday) || 0;
+                        item.usedToday = Number(item.usedToday) || 0;
+                    });
+
+                    const dataToSave = {
+                        stocks: this.stocks,
+                        transactions: this.transactions,
+                        categories: this.categories
+                    };
+                    localStorage.setItem('shop_cost_stock_data', JSON.stringify(dataToSave));
+                },
+
+                formatNumber(num) {
+                    return Number(num).toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+                },
+
+                currentMonthName() {
+                    const [year, month] = this.filterDate.split('-');
+                    const dateObj = new Date(year, month - 1, 1);
+                    return dateObj.toLocaleDateString('th-TH', { month: 'long', year: 'numeric' });
+                },
+
+                // Transactions Actions
+                addTransaction() {
+                    this.transactions.unshift({
+                        id: Date.now(),
+                        date: this.form.date,
+                        type: this.form.type,
+                        category: this.form.type === 'income' ? 'ยอดขาย' : this.form.category,
+                        name: this.form.name,
+                        amount: Number(this.form.amount)
+                    });
+                    this.form.name = '';
+                    this.form.amount = '';
+                    this.saveData();
+                },
+
+                deleteTransaction(id) {
+                    if (confirm('คุณต้องการลบรายการนี้ใช่หรือไม่?')) {
+                        this.transactions = this.transactions.filter(t => t.id !== id);
+                        this.saveData();
+                    }
+                },
+
+                // Calculations
+                getDailyIncome(dateStr) {
+                    return this.transactions
+                        .filter(t => t.date === dateStr && t.type === 'income')
+                        .reduce((sum, t) => sum + t.amount, 0);
+                },
+
+                getDailyExpense(dateStr) {
+                    return this.transactions
+                        .filter(t => t.date === dateStr && t.type === 'expense')
+                        .reduce((sum, t) => sum + t.amount, 0);
+                },
+
+                getDailyProfit(dateStr) {
+                    return this.getDailyIncome(dateStr) - this.getDailyExpense(dateStr);
+                },
+
+                getMonthlyIncome() {
+                    const currentMonth = this.filterDate.substring(0, 7);
+                    return this.transactions
+                        .filter(t => t.date.startsWith(currentMonth) && t.type === 'income')
+                        .reduce((sum, t) => sum + t.amount, 0);
+                },
+
+                getMonthlyExpense() {
+                    const currentMonth = this.filterDate.substring(0, 7);
+                    return this.transactions
+                        .filter(t => t.date.startsWith(currentMonth) && t.type === 'expense')
+                        .reduce((sum, t) => sum + t.amount, 0);
+                },
+
+                getMonthlyProfit() {
+                    return this.getMonthlyIncome() - this.getMonthlyExpense();
+                },
+
+                getMonthlyExpenseByCategory(cat) {
+                    const currentMonth = this.filterDate.substring(0, 7);
+                    return this.transactions
+                        .filter(t => t.date.startsWith(currentMonth) && t.type === 'expense' && t.category === cat)
+                        .reduce((sum, t) => sum + t.amount, 0);
+                },
+
+                // Stock Actions
+                openStockModal() {
+                    this.stockForm = { id: null, name: '', stock: 0, unit: 'กก.', minStock: 0, boughtToday: 0, usedToday: 0 };
+                    this.showStockModal = true;
+                },
+
+                editStock(item) {
+                    this.stockForm = { ...item };
+                    this.showStockModal = true;
+                },
+
+                saveStockItem() {
+                    if (this.stockForm.id) {
+                        const index = this.stocks.findIndex(s => s.id === this.stockForm.id);
+                        if (index !== -1) {
+                            this.stocks[index] = { ...this.stockForm };
+                        }
+                    } else {
+                        this.stocks.push({
+                            id: Date.now(),
+                            ...this.stockForm,
+                            boughtToday: 0,
+                            usedToday: 0
+                        });
+                    }
+                    this.showStockModal = false;
+                    this.saveData();
+                },
+
+                deleteStock(id) {
+                    if (confirm('ต้องการลบวัตถุดิบนี้ออกจากระบบใช่หรือไม่?')) {
+                        this.stocks = this.stocks.filter(s => s.id !== id);
+                        this.saveData();
+                    }
+                },
+
+                getLowStockItems() {
+                    return this.stocks.filter(item => item.stock <= item.minStock);
+                },
+
+                getLowStockCount() {
+                    return this.getLowStockItems().length;
+                },
+
+                // Categories Actions
+                addCategory() {
+                    if (this.newCategoryName.trim() && !this.categories.includes(this.newCategoryName.trim())) {
+                        this.categories.push(this.newCategoryName.trim());
+                        this.newCategoryName = '';
+                        this.saveData();
+                    }
+                },
+
+                deleteCategory(index) {
+                    if (this.categories.length <= 1) {
+                        alert('ต้องมีหมวดหมู่ค่าใช้จ่ายอย่างน้อย 1 หมวดหมู่');
+                        return;
+                    }
+                    const catName = this.categories[index];
+                    if (confirm(`ต้องการลบหมวดหมู่ "${catName}" ใช่หรือไม่?`)) {
+                        this.categories.splice(index, 1);
+                        this.saveData();
+                    }
+                },
+
+                // Backup & Restore
+                exportData() {
+                    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify({
+                        stocks: this.stocks,
+                        transactions: this.transactions,
+                        categories: this.categories
+                    }));
+                    const downloadAnchor = document.createElement('a');
+                    downloadAnchor.setAttribute("href", dataStr);
+                    downloadAnchor.setAttribute("download", `shop_data_${new Date().toISOString().split('T')[0]}.json`);
+                    document.body.appendChild(downloadAnchor);
+                    downloadAnchor.click();
+                    downloadAnchor.remove();
+                },
+
+                importData(event) {
+                    const fileReader = new FileReader();
+                    if (event.target.files[0]) {
+                        fileReader.readAsText(event.target.files[0], "UTF-8");
+                        fileReader.onload = (e) => {
+                            try {
+                                const parsed = JSON.parse(e.target.result);
+                                if (parsed.stocks && parsed.transactions) {
+                                    this.stocks = parsed.stocks;
+                                    this.transactions = parsed.transactions;
+                                    if (parsed.categories) this.categories = parsed.categories;
+                                    this.saveData();
+                                    alert('กู้คืนข้อมูลสำเร็จเรียบร้อยครับ!');
+                                } else {
+                                    alert('รูปแบบไฟล์ไม่ถูกต้อง');
+                                }
+                            } catch (err) {
+                                alert('เกิดข้อผิดพลาดในการอ่านไฟล์');
+                            }
+                        };
+                    }
+                }
+            }
+        }
+    </script>
+</body>
+</html>
